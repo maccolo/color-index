@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>深成岩 色指数チェッカー</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            margin: 0;
+            padding: 10px;
+            background-color: #f4f4f4;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        h1 {
+            font-size: 1.2rem;
+            margin-bottom: 10px;
+        }
+        .controls {
+            margin-bottom: 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            width: 100%;
+            max-width: 400px;
+        }
+        input[type="file"] {
+            font-size: 1rem;
+        }
+        #canvasContainer {
+            position: relative;
+            width: 100%;
+            max-width: 400px;
+            border: 1px solid #ccc;
+            background-color: #fff;
+            touch-action: none; /* タップ時のズームなどを防ぐ */
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: auto;
+        }
+        .result-panel {
+            margin-top: 15px;
+            font-size: 1.2rem;
+            font-weight: bold;
+            background-color: #fff;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            width: 100%;
+            max-width: 370px;
+            text-align: center;
+        }
+        button {
+            padding: 10px;
+            font-size: 1rem;
+            background-color: #007BFF;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        button:active {
+            background-color: #0056b3;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>色指数チェッカー</h1>
+    
+    <div class="controls">
+        <input type="file" id="imageLoader" accept="image/*" capture="environment">
+        <label>グリッド分割数: 
+            <select id="gridSize">
+                <option value="10" selected>10 x 10 (100マス)</option>
+                <option value="20">20 x 20 (400マス)</option>
+            </select>
+        </label>
+        <button id="resetBtn">選択をリセット</button>
+    </div>
+
+    <div id="canvasContainer">
+        <canvas id="myCanvas"></canvas>
+    </div>
+
+    <div class="result-panel">
+        色指数 (有色鉱物): <span id="colorIndex" style="color: #d9534f;">0.0</span> %
+        <br>
+        <span style="font-size: 0.9rem; font-weight: normal; color: #666;">(<span id="count">0</span> / <span id="total">100</span> マス)</span>
+    </div>
+
+<script>
+    const imageLoader = document.getElementById('imageLoader');
+    const canvas = document.getElementById('myCanvas');
+    const ctx = canvas.getContext('2d');
+    const colorIndexSpan = document.getElementById('colorIndex');
+    const countSpan = document.getElementById('count');
+    const totalSpan = document.getElementById('total');
+    const gridSizeSelect = document.getElementById('gridSize');
+    const resetBtn = document.getElementById('resetBtn');
+
+    let img = new Image();
+    let gridCount = parseInt(gridSizeSelect.value); // 縦横のマス数
+    let selectedGrids = []; // 選択されたマスを管理する2次元配列
+    let cellWidth = 0;
+    let cellHeight = 0;
+
+    // 初期化処理
+    function initGrids() {
+        gridCount = parseInt(gridSizeSelect.value);
+        selectedGrids = Array(gridCount).fill(null).map(() => Array(gridCount).fill(false));
+        updateResult();
+        draw();
+    }
+
+    // 画像読み込み処理
+    imageLoader.addEventListener('change', function(e) {
+        const reader = new FileReader();
+        reader.onload = function(event) {
+            img.onload = function() {
+                // スマホ画面に収まるようにCanvasサイズを調整（最大幅400px）
+                const maxWidth = Math.min(window.innerWidth - 20, 400);
+                const scale = maxWidth / img.width;
+                canvas.width = maxWidth;
+                canvas.height = img.height * scale;
+                initGrids();
+            }
+            img.src = event.target.result;
+        }
+        if(e.target.files[0]) {
+            reader.readAsDataURL(e.target.files[0]);
+        }
+    });
+
+    // グリッドサイズ変更時
+    gridSizeSelect.addEventListener('change', initGrids);
+
+    // リセットボタン
+    resetBtn.addEventListener('click', initGrids);
+
+    // 描画処理
+    function draw() {
+        if (!img.src) return;
+
+        // 画像を描画
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+        cellWidth = canvas.width / gridCount;
+        cellHeight = canvas.height / gridCount;
+
+        // 選択されたマスを半透明の赤で塗りつぶす
+        ctx.fillStyle = 'rgba(217, 83, 79, 0.5)';
+        for (let y = 0; y < gridCount; y++) {
+            for (let x = 0; x < gridCount; x++) {
+                if (selectedGrids[y][x]) {
+                    ctx.fillRect(x * cellWidth, y * cellHeight, cellWidth, cellHeight);
+                    // ×マークを描く場合
+                    ctx.beginPath();
+                    ctx.moveTo(x * cellWidth + 5, y * cellHeight + 5);
+                    ctx.lineTo((x + 1) * cellWidth - 5, (y + 1) * cellHeight - 5);
+                    ctx.moveTo((x + 1) * cellWidth - 5, y * cellHeight + 5);
+                    ctx.lineTo(x * cellWidth + 5, (y + 1) * cellHeight - 5);
+                    ctx.strokeStyle = 'red';
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                }
+            }
+        }
+
+        // グリッド線を描画
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)'; // 見やすいように半透明の白
+        ctx.lineWidth = 1;
+        for (let i = 0; i <= gridCount; i++) {
+            // 縦線
+            ctx.beginPath();
+            ctx.moveTo(i * cellWidth, 0);
+            ctx.lineTo(i * cellWidth, canvas.height);
+            ctx.stroke();
+            // 横線
+            ctx.beginPath();
+            ctx.moveTo(0, i * cellHeight);
+            ctx.lineTo(canvas.width, i * cellHeight);
+            ctx.stroke();
+        }
+    }
+
+    // タップ（クリック）イベント
+    canvas.addEventListener('pointerdown', function(e) {
+        if (!img.src) return;
+
+        // キャンバス上のタップ座標を計算
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        
+        const x = (e.clientX - rect.left) * scaleX;
+        const y = (e.clientY - rect.top) * scaleY;
+
+        // どのマスがタップされたか計算
+        const gridX = Math.floor(x / cellWidth);
+        const gridY = Math.floor(y / cellHeight);
+
+        // 配列の範囲内かチェック
+        if (gridX >= 0 && gridX < gridCount && gridY >= 0 && gridY < gridCount) {
+            // 状態を反転（選択/解除）
+            selectedGrids[gridY][gridX] = !selectedGrids[gridY][gridX];
+            updateResult();
+            draw();
+        }
+    });
+
+    // 色指数の計算と表示更新
+    function updateResult() {
+        let count = 0;
+        const total = gridCount * gridCount;
+        for (let y = 0; y < gridCount; y++) {
+            for (let x = 0; x < gridCount; x++) {
+                if (selectedGrids[y][x]) count++;
+            }
+        }
+        const percentage = (count / total) * 100;
+        colorIndexSpan.textContent = percentage.toFixed(1); // 小数点第1位まで表示
+        countSpan.textContent = count;
+        totalSpan.textContent = total;
+    }
+
+    // 初期状態の描画（空のキャンバス用）
+    ctx.fillStyle = '#eee';
+    ctx.fillRect(0, 0, canvas.width || 300, canvas.height || 300);
+    ctx.fillStyle = '#999';
+    ctx.font = '16px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('ファイルを選択、または写真を撮ってください', (canvas.width || 300)/2, (canvas.height || 300)/2);
+
+</script>
+</body>
+</html>

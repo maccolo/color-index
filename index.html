@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>深成岩 色指数チェッカー</title>
+    <title>深成岩 色指数チェッカー Pro</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css">
     <style>
         body {
             font-family: sans-serif;
@@ -13,230 +14,416 @@
             display: flex;
             flex-direction: column;
             align-items: center;
+            padding-bottom: 100px; /* 下部パネル用の余白 */
         }
-        h1 {
-            font-size: 1.2rem;
-            margin-bottom: 10px;
-        }
-        .controls {
-            margin-bottom: 10px;
+        h1 { font-size: 1.1rem; margin: 5px 0 10px 0; }
+        
+        /* 画面表示の切り替え用 */
+        .hidden { display: none !important; }
+
+        /* コンテナの基本設定 */
+        .container {
+            width: 100%;
+            max-width: 500px;
             display: flex;
             flex-direction: column;
-            gap: 10px;
+            align-items: center;
+        }
+
+        /* --- スタート画面 --- */
+        #startScreen {
+            text-align: center;
+            margin-top: 50px;
+        }
+        .custom-file-upload {
+            display: inline-block;
+            padding: 15px 25px;
+            background-color: #007BFF;
+            color: white;
+            border-radius: 8px;
+            font-size: 1.2rem;
+            cursor: pointer;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        /* --- トリミング画面 --- */
+        #cropScreen { width: 100%; text-align: center; }
+        .cropper-area {
             width: 100%;
-            max-width: 400px;
+            height: 70vh; /* 画面高さの70%を使用 */
+            background-color: #333;
+            margin-bottom: 10px;
+            position: relative;
         }
-        input[type="file"] {
-            font-size: 1rem;
+        #cropImage { max-width: 100%; display: block; }
+        
+        /* スケールガイド（トリミング画面に重ねる） */
+        #scaleGuide {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            border: 2px solid yellow;
+            background-color: rgba(255, 255, 0, 0.3);
+            box-sizing: border-box;
+            z-index: 10; /* Cropperの上に表示 */
+            pointer-events: none; /* タップを邪魔しない */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: yellow;
+            font-weight: bold;
+            font-size: 12px;
+            text-shadow: 1px 1px 0 #000;
         }
+
+        /* --- 解析画面 --- */
+        #analysisScreen { width: 100%; }
         #canvasContainer {
             position: relative;
             width: 100%;
-            max-width: 400px;
             border: 1px solid #ccc;
             background-color: #fff;
-            touch-action: none; /* タップ時のズームなどを防ぐ */
+            touch-action: none;
+            overflow: hidden;
         }
-        canvas {
-            display: block;
+        canvas { display: block; width: 100%; height: auto; }
+
+        /* --- 共通 UI --- */
+        .controls {
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
             width: 100%;
-            height: auto;
+            gap: 5px;
         }
-        .result-panel {
-            margin-top: 15px;
-            font-size: 1.2rem;
-            font-weight: bold;
-            background-color: #fff;
-            padding: 15px;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            width: 100%;
-            max-width: 370px;
-            text-align: center;
+        button, select {
+            padding: 8px;
+            font-size: 0.9rem;
+            border-radius: 5px;
+            border: 1px solid #ccc;
         }
         button {
-            padding: 10px;
-            font-size: 1rem;
-            background-color: #007BFF;
-            color: white;
-            border: none;
-            border-radius: 5px;
+            background-color: #fff;
             cursor: pointer;
         }
-        button:active {
-            background-color: #0056b3;
+        button.primary {
+            background-color: #28a745;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+        }
+        
+        /* 下部固定結果パネル */
+        .result-panel {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            background-color: rgba(255, 255, 255, 0.95);
+            padding: 15px;
+            box-sizing: border-box;
+            border-top: 1px solid #ccc;
+            box-shadow: 0 -2px 10px rgba(0,0,0,0.1);
+            text-align: center;
+            z-index: 100;
+        }
+        .ci-score {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #d9534f;
+            margin-bottom: 5px;
+        }
+        .ci-details {
+            font-size: 0.9rem;
+            color: #666;
         }
     </style>
 </head>
 <body>
 
-    <h1>色指数チェッカー</h1>
-    
-    <div class="controls">
-        <input type="file" id="imageLoader" accept="image/*">
-        <label>グリッド分割数: 
-            <select id="gridSize">
-                <option value="10" selected>10 x 10 (100マス)</option>
-                <option value="20">20 x 20 (400マス)</option>
-            </select>
-        </label>
-        <button id="resetBtn">選択をリセット</button>
+    <div class="container">
+        <h1>深成岩 色指数チェッカー Pro</h1>
+
+        <div id="startScreen">
+            <label class="custom-file-upload">
+                <input type="file" id="imageLoader" accept="image/*" style="display:none;">
+                📷 写真を選ぶ / 撮影する
+            </label>
+            <p style="color:#666; font-size:0.9rem; margin-top:20px;">
+                ※写真は正方形にトリミングされます。
+            </p>
+        </div>
+
+        <div id="cropScreen" class="hidden">
+            <div class="controls">
+                <button onclick="restart()">キャンセル</button>
+                <label>グリッド: 
+                    <select id="gridSizeCrop">
+                        <option value="20" selected>20 x 20</option>
+                        <option value="30">30 x 30</option>
+                        <option value="40">40 x 40</option>
+                    </select>
+                </label>
+            </div>
+            <div class="cropper-area">
+                <img id="cropImage">
+                <div id="scaleGuide">ガイド</div>
+            </div>
+            <button class="primary" id="cropBtn">トリミング完了 & 解析へ</button>
+        </div>
+
+        <div id="analysisScreen" class="hidden">
+            <div class="controls">
+                <button onclick="restart()">◀ 最初からやり直す</button>
+                <button id="resetBtn">選択をリセット</button>
+            </div>
+            <div id="canvasContainer">
+                <canvas id="myCanvas"></canvas>
+            </div>
+        </div>
     </div>
 
-    <div id="canvasContainer">
-        <canvas id="myCanvas"></canvas>
+    <div id="resultPanel" class="result-panel hidden">
+        <div class="ci-score">色指数: <span id="colorIndex">0.0</span> %</div>
+        <div class="ci-details">
+            ( <span id="count">0</span> / <span id="total">400</span> マスを選択中 )
+        </div>
     </div>
 
-    <div class="result-panel">
-        色指数 (有色鉱物): <span id="colorIndex" style="color: #d9534f;">0.0</span> %
-        <br>
-        <span style="font-size: 0.9rem; font-weight: normal; color: #666;">(<span id="count">0</span> / <span id="total">100</span> マス)</span>
-    </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
+    <script>
+        // DOM要素
+        const startScreen = document.getElementById('startScreen');
+        const cropScreen = document.getElementById('cropScreen');
+        const analysisScreen = document.getElementById('analysisScreen');
+        const resultPanel = document.getElementById('resultPanel');
+        const imageLoader = document.getElementById('imageLoader');
+        const cropImage = document.getElementById('cropImage');
+        const cropBtn = document.getElementById('cropBtn');
+        const gridSizeCrop = document.getElementById('gridSizeCrop');
+        const scaleGuide = document.getElementById('scaleGuide');
+        const canvas = document.getElementById('myCanvas');
+        const ctx = canvas.getContext('2d');
+        const colorIndexSpan = document.getElementById('colorIndex');
+        const countSpan = document.getElementById('count');
+        const totalSpan = document.getElementById('total');
+        const resetBtn = document.getElementById('resetBtn');
 
-<script>
-    const imageLoader = document.getElementById('imageLoader');
-    const canvas = document.getElementById('myCanvas');
-    const ctx = canvas.getContext('2d');
-    const colorIndexSpan = document.getElementById('colorIndex');
-    const countSpan = document.getElementById('count');
-    const totalSpan = document.getElementById('total');
-    const gridSizeSelect = document.getElementById('gridSize');
-    const resetBtn = document.getElementById('resetBtn');
+        // 状態変数
+        let cropper = null;
+        let croppedImg = null; // トリミング後の画像データ
+        let gridCount = parseInt(gridSizeCrop.value); // 縦横のマス数
+        let selectedGrids = [];
+        let cellWidth = 0;
+        let cellHeight = 0;
+        let canvasDisplayedWidth = 0; // 画面上でのCanvasの幅
 
-    let img = new Image();
-    let gridCount = parseInt(gridSizeSelect.value); // 縦横のマス数
-    let selectedGrids = []; // 選択されたマスを管理する2次元配列
-    let cellWidth = 0;
-    let cellHeight = 0;
+        // --- ライブラリの初期化と画面切り替え ---
 
-    // 初期化処理
-    function initGrids() {
-        gridCount = parseInt(gridSizeSelect.value);
-        selectedGrids = Array(gridCount).fill(null).map(() => Array(gridCount).fill(false));
-        updateResult();
-        draw();
-    }
+        // ファイルが選択されたらトリミング画面へ
+        imageLoader.addEventListener('change', function(e) {
+            const files = e.target.files;
+            if (files && files.length > 0) {
+                const file = files[0];
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    // スタート画面を隠し、トリミング画面を表示
+                    startScreen.classList.add('hidden');
+                    cropScreen.classList.remove('hidden');
+                    
+                    cropImage.src = event.target.result;
 
-    // 画像読み込み処理
-    imageLoader.addEventListener('change', function(e) {
-        const reader = new FileReader();
-        reader.onload = function(event) {
-            img.onload = function() {
-                // スマホ画面に収まるようにCanvasサイズを調整（最大幅400px）
-                const maxWidth = Math.min(window.innerWidth - 20, 400);
-                const scale = maxWidth / img.width;
-                canvas.width = maxWidth;
-                canvas.height = img.height * scale;
-                initGrids();
+                    // Cropper.js を初期化
+                    if (cropper) cropper.destroy(); // 以前のインスタンスがあれば破棄
+                    
+                    cropper = new Cropper(cropImage, {
+                        aspectRatio: 1, // 1:1 (正方形) に固定
+                        viewMode: 1,    // 画像からはみ出さない
+                        autoCropArea: 0.8, // 初期トリミングエリアの大きさ
+                        ready: function() {
+                            updateScaleGuide(); // ガイドの大きさを初期設定
+                        },
+                        cropmove: function() {
+                            updateScaleGuide(); // 動かしたときもガイドを更新
+                        },
+                        zoom: function() {
+                            updateScaleGuide(); // ズームしたときもガイドを更新
+                        }
+                    });
+                };
+                reader.readAsDataURL(file);
             }
-            img.src = event.target.result;
-        }
-        if(e.target.files[0]) {
-            reader.readAsDataURL(e.target.files[0]);
-        }
-    });
+        });
 
-    // グリッドサイズ変更時
-    gridSizeSelect.addEventListener('change', initGrids);
+        // グリッド数が変わったらガイドも更新
+        gridSizeCrop.addEventListener('change', function() {
+            gridCount = parseInt(this.value);
+            updateScaleGuide();
+        });
 
-    // リセットボタン
-    resetBtn.addEventListener('click', initGrids);
+        // スケールガイド（黄色の枠）の大きさを更新する関数
+        function updateScaleGuide() {
+            if (!cropper) return;
+            // 現在のトリミング画面での、プレビューエリア（正方形）のサイズを取得
+            const containerData = cropper.getContainerData();
+            const cropBoxData = cropper.getCropBoxData();
 
-    // 描画処理
-    function draw() {
-        if (!img.src) return;
+            // トリミング枠の実際の画面上の幅
+            const boxWidth = cropBoxData.width;
+            
+            // 選択されたグリッド数に基づいて、1マスの画面上のサイズを計算
+            const guideSize = boxWidth / gridCount;
 
-        // 画像を描画
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-
-        cellWidth = canvas.width / gridCount;
-        cellHeight = canvas.height / gridCount;
-
-        // 選択されたマスを半透明の赤で塗りつぶす
-        ctx.fillStyle = 'rgba(217, 83, 79, 0.5)';
-        for (let y = 0; y < gridCount; y++) {
-            for (let x = 0; x < gridCount; x++) {
-                if (selectedGrids[y][x]) {
-                    ctx.fillRect(x * cellWidth, y * cellHeight, cellWidth, cellHeight);
-                    // ×マークを描く場合
-                    ctx.beginPath();
-                    ctx.moveTo(x * cellWidth + 5, y * cellHeight + 5);
-                    ctx.lineTo((x + 1) * cellWidth - 5, (y + 1) * cellHeight - 5);
-                    ctx.moveTo((x + 1) * cellWidth - 5, y * cellHeight + 5);
-                    ctx.lineTo(x * cellWidth + 5, (y + 1) * cellHeight - 5);
-                    ctx.strokeStyle = 'red';
-                    ctx.lineWidth = 2;
-                    ctx.stroke();
-                }
-            }
+            // ガイドCSSに反映
+            scaleGuide.style.width = guideSize + 'px';
+            scaleGuide.style.height = guideSize + 'px';
+            scaleGuide.innerText = `1/${gridCount}`; // 文字を表示
         }
 
-        // グリッド線を描画
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)'; // 見やすいように半透明の白
-        ctx.lineWidth = 1;
-        for (let i = 0; i <= gridCount; i++) {
-            // 縦線
-            ctx.beginPath();
-            ctx.moveTo(i * cellWidth, 0);
-            ctx.lineTo(i * cellWidth, canvas.height);
-            ctx.stroke();
-            // 横線
-            ctx.beginPath();
-            ctx.moveTo(0, i * cellHeight);
-            ctx.lineTo(canvas.width, i * cellHeight);
-            ctx.stroke();
+        // トリミング完了ボタン
+        cropBtn.addEventListener('click', function() {
+            if (!cropper) return;
+
+            // トリミングされた画像をCanvasとして取得（サイズを指定して高精細にする）
+            // ここでは解析用なので、例えば1000px正方形として抽出
+            const croppedCanvas = cropper.getCroppedCanvas({
+                width: 1000,
+                height: 1000
+            });
+
+            // 画像データ（DataURL）に変換して保存
+            croppedImg = new Image();
+            croppedImg.onload = function() {
+                // トリミング画面を隠し、解析画面を表示
+                cropScreen.classList.add('hidden');
+                analysisScreen.classList.remove('hidden');
+                resultPanel.classList.remove('hidden');
+                
+                // 解析用のCanvas準備
+                initAnalysisCanvas();
+            };
+            croppedImg.src = croppedCanvas.toDataURL();
+        });
+
+        // 最初からやり直す
+        function restart() {
+            // 全画面をリセット
+            startScreen.classList.remove('hidden');
+            cropScreen.classList.add('hidden');
+            analysisScreen.classList.add('hidden');
+            resultPanel.classList.add('hidden');
+            
+            // 状態をクリア
+            if(cropper) cropper.destroy();
+            cropper = null;
+            croppedImg = null;
+            imageLoader.value = ''; // ファイル選択をリセット
         }
-    }
 
-    // タップ（クリック）イベント
-    canvas.addEventListener('pointerdown', function(e) {
-        if (!img.src) return;
 
-        // キャンバス上のタップ座標を計算
-        const rect = canvas.getBoundingClientRect();
-        const scaleX = canvas.width / rect.width;
-        const scaleY = canvas.height / rect.height;
-        
-        const x = (e.clientX - rect.left) * scaleX;
-        const y = (e.clientY - rect.top) * scaleY;
+        // --- 解析画面の処理 (以前のコードをベースに修正) ---
 
-        // どのマスがタップされたか計算
-        const gridX = Math.floor(x / cellWidth);
-        const gridY = Math.floor(y / cellHeight);
+        function initAnalysisCanvas() {
+            if (!croppedImg) return;
 
-        // 配列の範囲内かチェック
-        if (gridX >= 0 && gridX < gridCount && gridY >= 0 && gridY < gridCount) {
-            // 状態を反転（選択/解除）
-            selectedGrids[gridY][gridX] = !selectedGrids[gridY][gridX];
+            // スマホ画面に収まるようにCanvasサイズを調整（最大幅500px）
+            const containerWidth = document.getElementById('canvasContainer').clientWidth;
+            const maxWidth = Math.min(containerWidth, 500);
+            
+            // トリミングで正方形になっているので、縦横同サイズ
+            canvas.width = maxWidth;
+            canvas.height = maxWidth;
+            canvasDisplayedWidth = maxWidth;
+
+            // グリッド配列を初期化
+            selectedGrids = Array(gridCount).fill(null).map(() => Array(gridCount).fill(false));
+            
             updateResult();
             draw();
         }
-    });
 
-    // 色指数の計算と表示更新
-    function updateResult() {
-        let count = 0;
-        const total = gridCount * gridCount;
-        for (let y = 0; y < gridCount; y++) {
-            for (let x = 0; x < gridCount; x++) {
-                if (selectedGrids[y][x]) count++;
+        function draw() {
+            if (!croppedImg) return;
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            // トリミングされた画像を描画
+            ctx.drawImage(croppedImg, 0, 0, canvas.width, canvas.height);
+
+            cellWidth = canvas.width / gridCount;
+            cellHeight = canvas.height / gridCount;
+
+            // 選択されたマスの描画
+            for (let y = 0; y < gridCount; y++) {
+                for (let x = 0; x < gridCount; x++) {
+                    if (selectedGrids[y][x]) {
+                        // 半透明の赤で塗りつぶし
+                        ctx.fillStyle = 'rgba(217, 83, 79, 0.4)';
+                        ctx.fillRect(x * cellWidth, y * cellHeight, cellWidth, cellHeight);
+                        
+                        // 細い白の×マーク
+                        ctx.beginPath();
+                        ctx.moveTo(x * cellWidth + cellWidth*0.2, y * cellHeight + cellHeight*0.2);
+                        ctx.lineTo((x + 1) * cellWidth - cellWidth*0.2, (y + 1) * cellHeight - cellHeight*0.2);
+                        ctx.moveTo((x + 1) * cellWidth - cellWidth*0.2, y * cellHeight + cellHeight*0.2);
+                        ctx.lineTo(x * cellWidth + cellWidth*0.2, (y + 1) * cellHeight - cellHeight*0.2);
+                        ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+                        ctx.lineWidth = 1;
+                        ctx.stroke();
+                    }
+                }
+            }
+
+            // グリッド線（見やすいように非常に細い白）
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+            ctx.lineWidth = 0.5;
+            for (let i = 0; i <= gridCount; i++) {
+                ctx.beginPath();
+                ctx.moveTo(i * cellWidth, 0); ctx.lineTo(i * cellWidth, canvas.height);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(0, i * cellHeight); ctx.lineTo(canvas.width, i * cellHeight);
+                ctx.stroke();
             }
         }
-        const percentage = (count / total) * 100;
-        colorIndexSpan.textContent = percentage.toFixed(1); // 小数点第1位まで表示
-        countSpan.textContent = count;
-        totalSpan.textContent = total;
-    }
 
-    // 初期状態の描画（空のキャンバス用）
-    ctx.fillStyle = '#eee';
-    ctx.fillRect(0, 0, canvas.width || 300, canvas.height || 300);
-    ctx.fillStyle = '#999';
-    ctx.font = '16px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('ファイルを選択、または写真を撮ってください', (canvas.width || 300)/2, (canvas.height || 300)/2);
+        // タップイベント
+        canvas.addEventListener('pointerdown', function(e) {
+            if (!croppedImg) return;
+            const rect = canvas.getBoundingClientRect();
+            // 画面上のタップ座標をCanvas内の座標に変換
+            const x = (e.clientX - rect.left) * (canvas.width / rect.width);
+            const y = (e.clientY - rect.top) * (canvas.height / rect.height);
+            const gridX = Math.floor(x / cellWidth);
+            const gridY = Math.floor(y / cellHeight);
+            if (gridX >= 0 && gridX < gridCount && gridY >= 0 && gridY < gridCount) {
+                selectedGrids[gridY][gridX] = !selectedGrids[gridY][gridX];
+                updateResult();
+                draw();
+            }
+        });
 
-</script>
+        // リセットボタン
+        resetBtn.addEventListener('click', function() {
+            if (!croppedImg) return;
+            selectedGrids = Array(gridCount).fill(null).map(() => Array(gridCount).fill(false));
+            updateResult();
+            draw();
+        });
+
+        function updateResult() {
+            let count = 0;
+            const total = gridCount * gridCount;
+            for (let y = 0; y < gridCount; y++) {
+                for (let x = 0; x < gridCount; x++) {
+                    if (selectedGrids[y][x]) count++;
+                }
+            }
+            const percentage = total > 0 ? (count / total) * 100 : 0;
+            colorIndexSpan.textContent = percentage.toFixed(1);
+            countSpan.textContent = count;
+            totalSpan.textContent = total;
+        }
+
+    </script>
 </body>
 </html>
